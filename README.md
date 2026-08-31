@@ -1,14 +1,15 @@
 # Saad Sales GPT — Backend
 
-Implements Phases 0-2 of the technical spec ("TECHNICAL SPECIFICATION — DRAFT
+Implements Phases 0-3 of the technical spec ("TECHNICAL SPECIFICATION — DRAFT
 v0.1" Google Doc): the data schema and validation rules (Section 4), the source
-registry (Section 2), the ingestion pipeline (Phase 2), and the Manager's
-evidence-view compilation (Section 6), exposed over a small FastAPI service.
+registry (Section 2), the ingestion pipeline (Phase 2), Claude-assisted
+first-pass tagging with a human-review gate (Phase 3, R5), and the Manager's
+evidence-view compilation plus chat interface (Section 6, Section 8 Q5),
+exposed over a small FastAPI service.
 
-**Not yet built:** Phase 3 (Claude-assisted tagging + human review workflow) and
-Phase 5 (synthesis-layer polish). The Manager's synthesis view and the tagging
-data model exist and are tested, but nothing populates `Tag` rows automatically
-yet — see "What's next" below.
+**Not yet built:** real diarization, a review UI (the review workflow itself
+is built — see the API section — just no frontend for it), and background job
+processing for ingestion at scale. See "What's next" below.
 
 ## Setup
 
@@ -28,7 +29,9 @@ uv run saad-gpt serve         # http://127.0.0.1:8000
 uv run saad-gpt init-db       # dev-only shortcut; prefer alembic upgrade head
 uv run saad-gpt seed          # idempotent — safe to re-run
 uv run saad-gpt ingest        # runs pending MediaItems through download -> transcribe -> validate
+uv run saad-gpt tag           # Claude-assisted first-pass tagging over untagged Segments (Phase 3, R5)
 uv run saad-gpt serve         # FastAPI app
+uv run saad-gpt chat          # interactive chat against the Manager (Section 8, Q5)
 ```
 
 ## API
@@ -41,7 +44,17 @@ uv run saad-gpt serve         # FastAPI app
   — the Manager (Section 6). Always returns the evidence view (grouped, verbatim,
   attributed — R6, "No Averaging"); `include_synthesis=true` additionally asks
   Claude to build a cited synthesis strictly on top of that evidence.
-- `POST /tags/{tag_id}/review` — marks a tag `reviewed=true` (R5's human-review gate).
+- `POST /tags/{tag_id}/review` — marks a tag `reviewed=true` (R5's human-review gate;
+  Amlan does this pass per the Q3 answer below).
+- `POST /tagging/run?limit=50` — same as `saad-gpt tag`, over HTTP. Classifies
+  `segment_type`, `deal_industry`, and `topic` for untagged Segments, choosing only
+  from currently active `TaxonomyEntry` values (Section 4.3) and writing every result
+  as `Tag(tagged_by=claude_auto, reviewed=False)` (R5) — including `segment_type`,
+  which also sets the plain column on `Segment` but gets a Tag row too so it goes
+  through the same review gate. R4's "default to unspecified, never force a guess"
+  rule is enforced in code (`validation.resolve_deal_industry`), gated by
+  `SAAD_GPT_TAGGING_MIN_CONFIDENCE`. Only requires the Anthropic key if there's
+  actually something pending to tag.
 - `POST /manager/chat` — the chat interface (Section 8, Q5). Body: `{"question": "..."}`.
   Claude only extracts filters from the question; `compile_answer`/`generate_synthesis`
   still do the actual answering, same as `/manager/query`. Returns 503 with a clear
@@ -57,8 +70,9 @@ uv run saad-gpt serve         # FastAPI app
 | 4.3 Extensible taxonomy | `models.TaxonomyEntry`, seeded in `seed/seed_taxonomy.py` |
 | Section 5 taxonomy | `seed/seed_taxonomy.py` |
 | Section 6 Manager / R6 | `manager/compile.py`, `api/routes/manager.py` |
+| Phase 3 tagging / R5 | `tagging.py`, `api/routes/tagging.py` |
 | Section 7 "Backend" | this whole service |
-| Section 7 "Claude" | `manager/compile.py:generate_synthesis`, `manager/chat.py` |
+| Section 7 "Claude" | `tagging.py`, `manager/compile.py:generate_synthesis`, `manager/chat.py` |
 
 ## Section 8 open questions — answered by Amlan (2026-08-31)
 
@@ -84,19 +98,20 @@ Other build decisions still worth knowing about:
 - **Transcription:** local `faster-whisper`, not a managed API — no per-minute
   cost, no data leaving the machine (relevant to the Q4 PII answer above).
 
-## What's next (Phase 3+)
+## What's next (Phase 4+)
 
-1. Claude-assisted first-pass tagging (`segment_type`, `deal_industry`, `topic`),
-   writing `Tag(tagged_by=claude_auto, reviewed=False)` rows — the Manager, chat,
-   and validation layers are already built to consume these correctly (see
-   `tests/test_manager_compile.py`, `tests/test_chat.py`). Without this, the chat
-   interface and `/manager/query` have nothing tagged to search yet.
-2. Real diarization for `recording` / `podcast_insight` sources.
-3. A human review UI/workflow for `reviewed=false` tags and `needs_review` media
-   items (both already modeled — `ValidationIssue`, `Tag.reviewed` — just no UI).
-4. Background job processing for ingestion once volume grows toward the Q6
-   estimate (hundreds of items) — the current CLI/API-triggered run is synchronous
-   and will become a bottleneck well before then.
+1. Real diarization for `recording` / `podcast_insight` sources — without it,
+   those source types keep failing R1/R3 and landing in `needs_review`, so there's
+   little for `saad-gpt tag` to actually classify yet from those two sources.
+2. A human review UI for `reviewed=false` tags and `needs_review` media items
+   (both already modeled and API-reachable — `ValidationIssue`,
+   `POST /tags/{tag_id}/review` — just no frontend).
+3. Background job processing for ingestion + tagging once volume grows toward
+   the Q6 estimate (hundreds of items) — both are currently synchronous
+   CLI/API-triggered runs and will become a bottleneck well before then.
+4. Actually run ingestion + tagging against the real sources in Appendix A —
+   everything so far has only been exercised against seeded/empty and
+   mocked-Claude test data.
 
 ## Tests
 
@@ -109,5 +124,7 @@ uv run mypy src/
 
 `tests/` uses an isolated in-memory SQLite engine — no Postgres needed to run
 the suite. It covers R1-R4 (`test_validation.py`), the Manager's R6
-"no averaging" compilation logic (`test_manager_compile.py`), and the chat
-interface with the Anthropic client mocked out (`test_chat.py`).
+"no averaging" compilation logic (`test_manager_compile.py`), the chat
+interface (`test_chat.py`), and Phase 3 tagging including R4's confidence
+gate and batch failure isolation (`test_tagging.py`) — Anthropic client
+mocked out in all three.

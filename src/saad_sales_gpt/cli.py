@@ -6,6 +6,7 @@ from saad_sales_gpt.ingestion.pipeline import run_pending
 from saad_sales_gpt.manager.chat import answer_question
 from saad_sales_gpt.seed.seed_sources import seed_sources
 from saad_sales_gpt.seed.seed_taxonomy import seed_taxonomy
+from saad_sales_gpt.tagging import tag_pending_segments
 
 app = typer.Typer(help="Saad Sales GPT — backend CLI")
 
@@ -40,6 +41,24 @@ def ingest(limit: int = 20) -> None:
             typer.echo(f"{media_id}: {status.value}")
         if not results:
             typer.echo("no pending media items")
+    finally:
+        session.close()
+
+
+@app.command()
+def tag(limit: int = 50) -> None:
+    """Run Claude-assisted first-pass tagging over untagged Segments (Phase 3, R5).
+    Requires SAAD_GPT_ANTHROPIC_API_KEY. Writes tagged_by=claude_auto, reviewed=False
+    Tag rows — review with `POST /tags/{tag_id}/review`."""
+    session = SessionLocal()
+    try:
+        results = tag_pending_segments(session, limit=limit)
+        for segment_id, dimensions in results:
+            typer.echo(f"{segment_id}: {', '.join(dimensions) or 'failed'}")
+        if not results:
+            typer.echo("no pending segments")
+    except RuntimeError as exc:
+        typer.echo(f"error: {exc}")
     finally:
         session.close()
 

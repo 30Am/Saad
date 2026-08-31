@@ -23,10 +23,15 @@ class Settings(BaseSettings):
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
 
-    # Used only for optional Claude-assisted auto-tagging (R5) and the
-    # synthesis view (Section 6.1 step 4). Both are skipped, not faked, if unset.
+    # Used only for optional Claude-assisted auto-tagging (R5), the synthesis view
+    # (Section 6.1 step 4), and the chat interface (Section 8, Q5). All are skipped,
+    # not faked, if unset.
     anthropic_api_key: str | None = None
     claude_model: str = "claude-sonnet-5"
+
+    # R4: minimum confidence before an auto-classified value is trusted rather than
+    # defaulted (deal_industry -> "unspecified") or dropped (topic/segment_type).
+    tagging_min_confidence: float = 0.6
 
     # Apify token, used as a fallback fetcher for Instagram content that
     # yt-dlp cannot reach directly (see ingestion/instagram.py).
