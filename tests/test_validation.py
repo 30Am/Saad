@@ -12,11 +12,11 @@ from saad_sales_gpt.models import (
     Transcript,
 )
 from saad_sales_gpt.validation import (
-    DEFAULT_PROSPECT_BACKGROUND,
+    DEFAULT_DEAL_INDUSTRY,
     check_r1_recording,
     check_r2_qa_insight,
     check_r3_podcast_insight,
-    resolve_prospect_background,
+    resolve_deal_industry,
 )
 
 
@@ -135,6 +135,6 @@ def test_r3_podcast_requires_isolated_saad_segment(session: Session) -> None:
 
 
 def test_r4_defaults_to_unspecified_below_confidence_threshold() -> None:
-    assert resolve_prospect_background("technology", confidence=0.4, min_confidence=0.6) == DEFAULT_PROSPECT_BACKGROUND
-    assert resolve_prospect_background(None, confidence=None, min_confidence=0.6) == DEFAULT_PROSPECT_BACKGROUND
-    assert resolve_prospect_background("technology", confidence=0.9, min_confidence=0.6) == "technology"
+    assert resolve_deal_industry("technology", confidence=0.4, min_confidence=0.6) == DEFAULT_DEAL_INDUSTRY
+    assert resolve_deal_industry(None, confidence=None, min_confidence=0.6) == DEFAULT_DEAL_INDUSTRY
+    assert resolve_deal_industry("technology", confidence=0.9, min_confidence=0.6) == "technology"

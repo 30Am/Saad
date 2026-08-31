@@ -7,12 +7,15 @@ and topics get added later as rows, with no code or schema change.
 from sqlalchemy.orm import Session
 
 from saad_sales_gpt.models import TaxonomyEntry
+from saad_sales_gpt.validation import DEAL_INDUSTRY_DIMENSION
 
-PROSPECT_BACKGROUND = [
-    ("sales", "Prospect already comes from a sales/business role."),
-    ("social_media", "Prospect comes from a content/social/creator background."),
-    ("technology", "Prospect comes from a technical/product/engineering background."),
-    ("unspecified", "Default bucket when background isn't stated or can't be confidently inferred."),
+# Category = the deal/industry type, per Amlan's answer to spec Section 8, Q2
+# (not the prospect's personal background, which is what Section 5's draft assumed).
+DEAL_INDUSTRY = [
+    ("sales", "The deal is in the sales/business services industry."),
+    ("social_media", "The deal is in the content/social/creator industry."),
+    ("technology", "The deal is in the tech/product/engineering industry."),
+    ("unspecified", "Default bucket when the deal's industry isn't stated or can't be confidently inferred."),
 ]
 
 SEGMENT_TYPE = [
@@ -42,7 +45,7 @@ def seed_taxonomy(session: Session) -> None:
                 continue
             session.add(TaxonomyEntry(dimension=dimension, value=value, description=description))
 
-    add_all("prospect_background", PROSPECT_BACKGROUND)
+    add_all(DEAL_INDUSTRY_DIMENSION, DEAL_INDUSTRY)
     add_all("segment_type", SEGMENT_TYPE)
     add_all("topic", TOPIC)
 

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from saad_sales_gpt.config import settings
 from saad_sales_gpt.models import MediaItem, Segment, Source, SourceType, Tag, Transcript
+from saad_sales_gpt.validation import DEAL_INDUSTRY_DIMENSION
 
 ALL = "all"
 
@@ -72,7 +73,7 @@ def compile_answer(
 
     candidate_ids: set[str] | None = None
     if category != ALL:
-        candidate_ids = _segment_ids_for_tag(session, "prospect_background", category, include_unreviewed)
+        candidate_ids = _segment_ids_for_tag(session, DEAL_INDUSTRY_DIMENSION, category, include_unreviewed)
     if topic:
         topic_ids = _segment_ids_for_tag(session, "topic", topic, include_unreviewed)
         candidate_ids = topic_ids if candidate_ids is None else candidate_ids & topic_ids
@@ -96,7 +97,7 @@ def compile_answer(
         if source_type is not None and source.source_type != source_type:
             continue
 
-        seg_category = _tag_value(segment, "prospect_background") or "unspecified"
+        seg_category = _tag_value(segment, DEAL_INDUSTRY_DIMENSION) or "unspecified"
         seg_topic = _tag_value(segment, "topic")
 
         item = EvidenceItem(

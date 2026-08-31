@@ -48,7 +48,7 @@ def _seed_two_matching_segments(session: Session) -> None:
             [
                 Tag(
                     segment_id=seg.segment_id,
-                    tag_dimension="prospect_background",
+                    tag_dimension="deal_industry",
                     tag_value="technology",
                     tagged_by=TaggedBy.human,
                     reviewed=True,
@@ -106,7 +106,7 @@ def test_unreviewed_auto_tags_excluded_by_default(session: Session) -> None:
     session.add(
         Tag(
             segment_id=segment.segment_id,
-            tag_dimension="prospect_background",
+            tag_dimension="deal_industry",
             tag_value="social_media",
             tagged_by=TaggedBy.claude_auto,
             reviewed=False,  # R5: unreviewed auto-tags are not trusted by default

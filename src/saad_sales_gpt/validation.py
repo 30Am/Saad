@@ -78,13 +78,13 @@ def validate_media_item(session: Session, media_item: MediaItem, source: Source)
     return results
 
 
-PROSPECT_BACKGROUND_DIMENSION = "prospect_background"
-DEFAULT_PROSPECT_BACKGROUND = "unspecified"
+DEAL_INDUSTRY_DIMENSION = "deal_industry"
+DEFAULT_DEAL_INDUSTRY = "unspecified"
 
 
-def resolve_prospect_background(inferred_value: str | None, confidence: float | None, min_confidence: float) -> str:
-    """R4: default to 'unspecified' when the background can't be confidently inferred.
-    Never force a low-confidence guess into one of the named categories."""
+def resolve_deal_industry(inferred_value: str | None, confidence: float | None, min_confidence: float) -> str:
+    """R4: default to 'unspecified' when the deal/industry type can't be confidently
+    inferred. Never force a low-confidence guess into one of the named categories."""
     if inferred_value and confidence is not None and confidence >= min_confidence:
         return inferred_value
-    return DEFAULT_PROSPECT_BACKGROUND
+    return DEFAULT_DEAL_INDUSTRY

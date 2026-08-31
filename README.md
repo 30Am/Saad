@@ -54,17 +54,20 @@ uv run saad-gpt serve         # FastAPI app
 | Section 6 Manager / R6 | `manager/compile.py`, `api/routes/manager.py` |
 | Section 7 "Backend" | this whole service |
 | Section 7 "Claude" | `manager/compile.py:generate_synthesis` (synthesis only, so far) |
-| Section 7 "Osiris" | **unplaced — still an open question, see below** |
 
-## Design decisions made without a confirmed answer
+## Section 8 open questions — answered by Amlan (2026-08-31)
 
-The spec's own Section 8 flags these rather than blocking the draft; this build
-made the following calls to keep moving, and they should be revisited with Amlan:
+| Q | Answer | Where it lands |
+| --- | --- | --- |
+| Q1: What is Osiris? | It was a mistake — not part of the architecture. | N/A |
+| Q2: What does "category" mean? | Deal/industry type — **not** the prospect's personal background, which is what Section 5's draft assumed. | `validation.DEAL_INDUSTRY_DIMENSION`, `seed/seed_taxonomy.py` |
+| Q3: Who reviews Claude's auto-tags (R5)? | Amlan. | `POST /tags/{tag_id}/review` |
+| Q4: PII policy for cold-call recordings? | Store raw, core-team only — no redaction. | `.gitignore` excludes media/`.env` as a stopgap, not a real access control |
+| Q5: Interface for asking the Manager questions? | A chat tool. | Not built yet — see "What's next" |
+| Q6: Scale to plan for? | Hundreds of reels/videos, growing steadily. | Not yet addressed — current pipeline is synchronous; see "What's next" |
 
-- **PII (Q4):** nothing is redacted. Cold-call recordings/transcripts are stored
-  as fetched. Do not expose this service outside the core team until a redaction
-  policy is decided — see `.gitignore` (media/`.env` excluded) as a stopgap, not
-  a real control.
+Other build decisions still worth knowing about:
+
 - **Diarization:** not implemented (see `ingestion/diarization.py` docstring).
   `recording` and `podcast_insight` items will currently fail R1/R3 and land in
   `needs_review` until real diarization (e.g. pyannote.audio) is wired in —
@@ -74,25 +77,22 @@ made the following calls to keep moving, and they should be revisited with Amlan
   Instagram Scraper actor if `SAAD_GPT_APIFY_API_TOKEN` is set; otherwise media
   items must be seeded manually via `POST /media-items`.
 - **Transcription:** local `faster-whisper`, not a managed API — no per-minute
-  cost, no data leaving the machine (relevant to the Q4 PII question above).
-- **What "Osiris" is (Q1):** unknown. Nothing in this build assumes an Osiris
-  component exists; if it turns out to be an orchestration/rules layer, the
-  natural seam is `validation.py` + `ingestion/pipeline.py`.
-- **What "category" means (Q2):** built as Section 5 describes — prospect's
-  professional background — since that's what Section 5's working definition
-  states. Flagged, not re-litigated here.
+  cost, no data leaving the machine (relevant to the Q4 PII answer above).
 
 ## What's next (Phase 3+)
 
-1. Answer Section 8's open questions with Amlan — several (Q2, Q4, Q5) change
-   what gets built next, not just how.
-2. Claude-assisted first-pass tagging (`segment_type`, `prospect_background`,
-   `topic`), writing `Tag(tagged_by=claude_auto, reviewed=False)` rows — the
-   Manager and validation layers are already built to consume these correctly
-   (see `tests/test_manager_compile.py`).
+1. Claude-assisted first-pass tagging (`segment_type`, `deal_industry`, `topic`),
+   writing `Tag(tagged_by=claude_auto, reviewed=False)` rows — the Manager and
+   validation layers are already built to consume these correctly (see
+   `tests/test_manager_compile.py`).
+2. Chat interface on top of `manager/compile.py` (Q5) — free-text question in,
+   Claude maps it to filters, evidence + synthesis come back conversationally.
 3. Real diarization for `recording` / `podcast_insight` sources.
 4. A human review UI/workflow for `reviewed=false` tags and `needs_review` media
    items (both already modeled — `ValidationIssue`, `Tag.reviewed` — just no UI).
+5. Background job processing for ingestion once volume grows toward the Q6
+   estimate (hundreds of items) — the current CLI/API-triggered run is synchronous
+   and will become a bottleneck well before then.
 
 ## Tests
 
