@@ -3,6 +3,7 @@ import uvicorn
 
 from saad_sales_gpt.db import Base, SessionLocal, engine
 from saad_sales_gpt.ingestion.pipeline import run_pending
+from saad_sales_gpt.manager.chat import answer_question
 from saad_sales_gpt.seed.seed_sources import seed_sources
 from saad_sales_gpt.seed.seed_taxonomy import seed_taxonomy
 
@@ -47,6 +48,31 @@ def ingest(limit: int = 20) -> None:
 def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False) -> None:
     """Run the FastAPI app (Manager query API + admin endpoints)."""
     uvicorn.run("saad_sales_gpt.api.main:app", host=host, port=port, reload=reload)
+
+
+@app.command()
+def chat() -> None:
+    """Interactive chat against the Manager (Section 8, Q5). Requires
+    SAAD_GPT_ANTHROPIC_API_KEY. Same underlying evidence view as /manager/query —
+    Claude only extracts filters here, it never answers from its own knowledge."""
+    session = SessionLocal()
+    typer.echo("Ask a sales question (Ctrl+D or 'exit' to quit).")
+    try:
+        while True:
+            try:
+                question = typer.prompt("you")
+            except typer.Abort:  # Ctrl+D / Ctrl+C
+                break
+            if question.strip().lower() in {"exit", "quit"}:
+                break
+            try:
+                result = answer_question(session, question)
+            except RuntimeError as exc:
+                typer.echo(f"error: {exc}")
+                continue
+            typer.echo(f"manager [{result.category}/{result.topic or '-'}]: {result.reply}")
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

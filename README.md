@@ -42,6 +42,11 @@ uv run saad-gpt serve         # FastAPI app
   attributed — R6, "No Averaging"); `include_synthesis=true` additionally asks
   Claude to build a cited synthesis strictly on top of that evidence.
 - `POST /tags/{tag_id}/review` — marks a tag `reviewed=true` (R5's human-review gate).
+- `POST /manager/chat` — the chat interface (Section 8, Q5). Body: `{"question": "..."}`.
+  Claude only extracts filters from the question; `compile_answer`/`generate_synthesis`
+  still do the actual answering, same as `/manager/query`. Returns 503 with a clear
+  message if `SAAD_GPT_ANTHROPIC_API_KEY` isn't set. Also available as `saad-gpt chat`
+  (interactive REPL).
 
 ## Architecture vs. the spec
 
@@ -53,7 +58,7 @@ uv run saad-gpt serve         # FastAPI app
 | Section 5 taxonomy | `seed/seed_taxonomy.py` |
 | Section 6 Manager / R6 | `manager/compile.py`, `api/routes/manager.py` |
 | Section 7 "Backend" | this whole service |
-| Section 7 "Claude" | `manager/compile.py:generate_synthesis` (synthesis only, so far) |
+| Section 7 "Claude" | `manager/compile.py:generate_synthesis`, `manager/chat.py` |
 
 ## Section 8 open questions — answered by Amlan (2026-08-31)
 
@@ -63,7 +68,7 @@ uv run saad-gpt serve         # FastAPI app
 | Q2: What does "category" mean? | Deal/industry type — **not** the prospect's personal background, which is what Section 5's draft assumed. | `validation.DEAL_INDUSTRY_DIMENSION`, `seed/seed_taxonomy.py` |
 | Q3: Who reviews Claude's auto-tags (R5)? | Amlan. | `POST /tags/{tag_id}/review` |
 | Q4: PII policy for cold-call recordings? | Store raw, core-team only — no redaction. | `.gitignore` excludes media/`.env` as a stopgap, not a real access control |
-| Q5: Interface for asking the Manager questions? | A chat tool. | Not built yet — see "What's next" |
+| Q5: Interface for asking the Manager questions? | A chat tool. | `POST /manager/chat`, `saad-gpt chat` |
 | Q6: Scale to plan for? | Hundreds of reels/videos, growing steadily. | Not yet addressed — current pipeline is synchronous; see "What's next" |
 
 Other build decisions still worth knowing about:
@@ -82,15 +87,14 @@ Other build decisions still worth knowing about:
 ## What's next (Phase 3+)
 
 1. Claude-assisted first-pass tagging (`segment_type`, `deal_industry`, `topic`),
-   writing `Tag(tagged_by=claude_auto, reviewed=False)` rows — the Manager and
-   validation layers are already built to consume these correctly (see
-   `tests/test_manager_compile.py`).
-2. Chat interface on top of `manager/compile.py` (Q5) — free-text question in,
-   Claude maps it to filters, evidence + synthesis come back conversationally.
-3. Real diarization for `recording` / `podcast_insight` sources.
-4. A human review UI/workflow for `reviewed=false` tags and `needs_review` media
+   writing `Tag(tagged_by=claude_auto, reviewed=False)` rows — the Manager, chat,
+   and validation layers are already built to consume these correctly (see
+   `tests/test_manager_compile.py`, `tests/test_chat.py`). Without this, the chat
+   interface and `/manager/query` have nothing tagged to search yet.
+2. Real diarization for `recording` / `podcast_insight` sources.
+3. A human review UI/workflow for `reviewed=false` tags and `needs_review` media
    items (both already modeled — `ValidationIssue`, `Tag.reviewed` — just no UI).
-5. Background job processing for ingestion once volume grows toward the Q6
+4. Background job processing for ingestion once volume grows toward the Q6
    estimate (hundreds of items) — the current CLI/API-triggered run is synchronous
    and will become a bottleneck well before then.
 
@@ -104,5 +108,6 @@ uv run mypy src/
 ```
 
 `tests/` uses an isolated in-memory SQLite engine — no Postgres needed to run
-the suite. It covers R1-R4 (`test_validation.py`) and the Manager's R6
-"no averaging" compilation logic (`test_manager_compile.py`).
+the suite. It covers R1-R4 (`test_validation.py`), the Manager's R6
+"no averaging" compilation logic (`test_manager_compile.py`), and the chat
+interface with the Anthropic client mocked out (`test_chat.py`).

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from saad_sales_gpt.db import get_session
+from saad_sales_gpt.manager.chat import answer_question
 from saad_sales_gpt.manager.compile import ALL, compile_answer, generate_synthesis
 from saad_sales_gpt.models import SourceType, Tag
-from saad_sales_gpt.schemas import ManagerQueryOut
+from saad_sales_gpt.schemas import ChatIn, ChatOut, ManagerQueryOut
 
 router = APIRouter()
 
@@ -30,6 +31,25 @@ def query_manager(
     if include_synthesis:
         generate_synthesis(answer)
     return ManagerQueryOut(**answer.__dict__)
+
+
+@router.post("/manager/chat", response_model=ChatOut)
+def chat_manager(body: ChatIn, session: Session = Depends(get_session)) -> ChatOut:
+    """Section 8, Q5: the chat interface. Claude only extracts filters — the actual
+    answer still comes from compile_answer()/generate_synthesis(), same as /manager/query."""
+    try:
+        result = answer_question(session, body.question)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return ChatOut(
+        question=result.question,
+        category=result.category,
+        topic=result.topic,
+        source_type=result.source_type,
+        reply=result.reply,
+        evidence=ManagerQueryOut(**result.compiled.__dict__),
+    )
 
 
 @router.post("/tags/{tag_id}/review")

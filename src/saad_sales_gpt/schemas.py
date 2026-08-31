@@ -63,3 +63,16 @@ class ManagerQueryOut(BaseModel):
     empty_categories: list[str]
     synthesis: str | None = None
     synthesis_citations: list[str] = []
+
+
+class ChatIn(BaseModel):
+    question: str
+
+
+class ChatOut(BaseModel):
+    question: str
+    category: str
+    topic: str | None
+    source_type: str | None
+    reply: str
+    evidence: ManagerQueryOut
