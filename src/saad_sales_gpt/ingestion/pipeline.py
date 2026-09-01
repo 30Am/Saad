@@ -1,11 +1,19 @@
 """Ingestion orchestrator (spec Phase 2): download -> transcribe -> validate (R1-R3).
 
+Raw audio is deleted from disk right after a successful transcription (see
+_cleanup_raw_media) — only the transcript is needed downstream, and full podcast/reel
+audio adds up fast at the Section 8 Q6 scale (hundreds of items). raw_media_path stays
+set as a record that audio existed (R1 cares about that, not about local retention);
+raw_media_deleted_at marks when it was removed.
+
 Deliberately stops short of Phase 3 (Claude-assisted tagging) — see manager/compile.py
 and tests/test_manager_compile.py for the tagging-dependent Manager logic, which is
 ready to receive Tag rows once that phase starts.
 """
 
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -26,6 +34,18 @@ from saad_sales_gpt.models import (
 from saad_sales_gpt.validation import validate_media_item
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_raw_media(session: Session, media_item: MediaItem) -> None:
+    """Deletes the raw audio file once its transcript is safely persisted. No-ops if
+    there's nothing to delete (no path, or already cleaned up)."""
+    if not media_item.raw_media_path or media_item.raw_media_deleted_at:
+        return
+    path = Path(media_item.raw_media_path)
+    if path.exists():
+        path.unlink()
+    media_item.raw_media_deleted_at = datetime.now(UTC)
+    session.commit()
 
 
 def _fail(session: Session, media_item: MediaItem, message: str) -> None:
@@ -119,6 +139,7 @@ def _transcribe(session: Session, media_item: MediaItem, source: Source) -> bool
 
     media_item.ingestion_status = IngestionStatus.transcribed
     session.commit()
+    _cleanup_raw_media(session, media_item)
     return True
 
 
@@ -144,3 +165,24 @@ def ingest_media_item(session: Session, media_item: MediaItem) -> IngestionStatu
 def run_pending(session: Session, limit: int = 20) -> list[tuple[str, IngestionStatus]]:
     pending = session.query(MediaItem).filter(MediaItem.ingestion_status == IngestionStatus.pending).limit(limit).all()
     return [(item.media_id, ingest_media_item(session, item)) for item in pending]
+
+
+def cleanup_transcribed_media(session: Session) -> list[str]:
+    """Backfill: deletes raw audio for MediaItems that already have a transcript but
+    predate the auto-cleanup in _transcribe (or somehow slipped past it). Returns the
+    media_ids cleaned up."""
+    candidates = (
+        session.query(MediaItem)
+        .filter(MediaItem.raw_media_path.is_not(None), MediaItem.raw_media_deleted_at.is_(None))
+        .filter(
+            MediaItem.ingestion_status.in_(
+                [IngestionStatus.transcribed, IngestionStatus.needs_review, IngestionStatus.ready]
+            )
+        )
+        .all()
+    )
+    cleaned = []
+    for media_item in candidates:
+        _cleanup_raw_media(session, media_item)
+        cleaned.append(media_item.media_id)
+    return cleaned

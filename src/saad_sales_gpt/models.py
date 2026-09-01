@@ -84,6 +84,11 @@ class MediaItem(Base):
     published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_media_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Set once the raw file at raw_media_path is deleted post-transcription to save disk
+    # (see ingestion/pipeline.py:_cleanup_raw_media). raw_media_path itself is kept as a
+    # record that audio existed and was processed — R1's "audio_path != NULL" check is
+    # about that, not about whether the file is still retained on disk.
+    raw_media_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ingestion_status: Mapped[IngestionStatus] = mapped_column(
         Enum(IngestionStatus, native_enum=False, length=20), default=IngestionStatus.pending
     )

@@ -2,7 +2,7 @@ import typer
 import uvicorn
 
 from saad_sales_gpt.db import Base, SessionLocal, engine
-from saad_sales_gpt.ingestion.pipeline import run_pending
+from saad_sales_gpt.ingestion.pipeline import cleanup_transcribed_media, run_pending
 from saad_sales_gpt.manager.chat import answer_question
 from saad_sales_gpt.seed.seed_sources import seed_sources
 from saad_sales_gpt.seed.seed_taxonomy import seed_taxonomy
@@ -41,6 +41,21 @@ def ingest(limit: int = 20) -> None:
             typer.echo(f"{media_id}: {status.value}")
         if not results:
             typer.echo("no pending media items")
+    finally:
+        session.close()
+
+
+@app.command()
+def cleanup_media() -> None:
+    """Backfill: delete raw audio for already-transcribed MediaItems that predate the
+    auto-cleanup ingestion now does after every successful transcription."""
+    session = SessionLocal()
+    try:
+        cleaned = cleanup_transcribed_media(session)
+        for media_id in cleaned:
+            typer.echo(f"{media_id}: raw media deleted")
+        if not cleaned:
+            typer.echo("nothing to clean up")
     finally:
         session.close()
 
