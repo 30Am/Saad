@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # yt-dlp cannot reach directly (see ingestion/instagram.py).
     apify_api_token: str | None = None
 
+    # Instagram requires an authenticated session for yt-dlp to list a profile's
+    # posts (not just to fetch one by direct URL) — see ingestion/instagram.py.
+    # Set at most one. instagram_cookies_from_browser wins if both are set.
+    instagram_cookies_from_browser: str | None = None  # e.g. "chrome", "safari", "firefox"
+    instagram_cookies_file: Path | None = None  # path to a Netscape-format cookies.txt
+
 
 settings = Settings()
 settings.media_root.mkdir(parents=True, exist_ok=True)

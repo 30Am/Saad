@@ -91,10 +91,14 @@ Other build decisions still worth knowing about:
   `recording` and `podcast_insight` items will currently fail R1/R3 and land in
   `needs_review` until real diarization (e.g. pyannote.audio) is wired in —
   that's the spec-compliant behavior ("routed to review, not discarded"), not a bug.
-- **Instagram media discovery:** no reliable "list all reels for an account" API
-  exists without login. `ingestion/instagram.py` tries yt-dlp, then Apify's
-  Instagram Scraper actor if `SAAD_GPT_APIFY_API_TOKEN` is set; otherwise media
-  items must be seeded manually via `POST /media-items`.
+- **Instagram media discovery:** yt-dlp can fetch a single public post/reel by
+  direct URL with no login, but *listing* everything on a profile needs an
+  authenticated session. Set `SAAD_GPT_INSTAGRAM_COOKIES_FROM_BROWSER` (e.g.
+  `chrome`, pulls from a logged-in local browser) or `SAAD_GPT_INSTAGRAM_COOKIES_FILE`
+  (a Netscape-format `cookies.txt` export) to authenticate — see
+  `ingestion/instagram.py:_cookie_opts`. Without either, listing falls back to
+  Apify's Instagram Scraper actor if `SAAD_GPT_APIFY_API_TOKEN` is set, and
+  finally to seeding media items manually via `POST /media-items`.
 - **Transcription:** local `faster-whisper`, not a managed API — no per-minute
   cost, no data leaving the machine (relevant to the Q4 PII answer above).
 

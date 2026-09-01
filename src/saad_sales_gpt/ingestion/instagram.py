@@ -1,16 +1,17 @@
 """Instagram fetch (spec Section 2.1: @saadsells, @saadsells.value).
 
-Two open items this module can't resolve on its own — flagged rather than guessed,
-per spec Section 8:
+Instagram lets yt-dlp fetch a single public post/reel by direct URL with no auth,
+but *listing* everything on a profile needs an authenticated session — that's the
+one thing an anonymous yt-dlp call can't do here (unlike YouTube). _cookie_opts()
+supplies that session from either a locally logged-in browser
+(SAAD_GPT_INSTAGRAM_COOKIES_FROM_BROWSER, e.g. "chrome") or an exported
+cookies.txt (SAAD_GPT_INSTAGRAM_COOKIES_FILE). With neither set, listing falls
+back to Apify if configured, then to manual seeding via POST /media-items.
 
-  - Q4 (PII): cold call recordings likely contain prospect names/numbers. This module
-    does not redact anything; it stores what it fetches. Don't wire this up to serve
-    content outside the core team until Q4 is answered.
-  - No official API covers "list every reel on this account" — Instagram's login wall
-    makes that unreliable even via yt-dlp. list_instagram_media() tries yt-dlp first
-    (works sometimes for public accounts) and falls back to Apify's Instagram Scraper
-    actor if SAAD_GPT_APIFY_API_TOKEN is set. Without either working, media discovery
-    for an account has to be seeded manually (its post/reel URLs passed in directly).
+One open item this module can't resolve on its own — flagged rather than guessed,
+per spec Section 8, Q4 (PII): cold call recordings likely contain prospect
+names/numbers. This module does not redact anything; it stores what it fetches.
+Don't wire this up to serve content outside the core team until Q4 is answered.
 """
 
 from dataclasses import dataclass
@@ -22,6 +23,17 @@ import yt_dlp
 from saad_sales_gpt.config import settings
 
 APIFY_INSTAGRAM_SCRAPER_ACTOR = "apify/instagram-scraper"
+
+
+def _cookie_opts() -> dict:
+    """yt-dlp options that authenticate as whoever's session is configured — needed
+    for profile listing, and it also makes single-post downloads less likely to hit
+    Instagram's bot-detection wall (the same kind of block the YouTube run hit)."""
+    if settings.instagram_cookies_from_browser:
+        return {"cookiesfrombrowser": (settings.instagram_cookies_from_browser,)}
+    if settings.instagram_cookies_file:
+        return {"cookiefile": str(settings.instagram_cookies_file)}
+    return {}
 
 
 @dataclass
@@ -44,7 +56,7 @@ def list_instagram_media(profile_url: str, limit: int = 50) -> list[str]:
 
 
 def _list_via_ytdlp(profile_url: str, limit: int) -> list[str]:
-    ydl_opts = {"extract_flat": True, "quiet": True, "playlistend": limit}
+    ydl_opts = {"extract_flat": True, "quiet": True, "playlistend": limit, **_cookie_opts()}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(profile_url, download=False)
@@ -79,6 +91,7 @@ def fetch_instagram_media(url: str, media_id: str) -> FetchedMedia:
         "outtmpl": out_template,
         "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "128"}],
         "quiet": True,
+        **_cookie_opts(),
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
