@@ -2,6 +2,7 @@ import typer
 import uvicorn
 
 from saad_sales_gpt.db import Base, SessionLocal, engine
+from saad_sales_gpt.ingestion.instagram import discover_and_seed_media
 from saad_sales_gpt.ingestion.pipeline import cleanup_transcribed_media, run_pending
 from saad_sales_gpt.manager.chat import answer_question
 from saad_sales_gpt.seed.seed_sources import seed_sources
@@ -27,6 +28,26 @@ def seed() -> None:
         seed_taxonomy(session)
         created = seed_sources(session)
         typer.echo(f"seeded taxonomy; created {len(created)} source(s)")
+    finally:
+        session.close()
+
+
+@app.command()
+def discover_instagram(limit: int = 50) -> None:
+    """List posts/reels for every Instagram Source and create a pending MediaItem
+    for each new one found — run this before `ingest` for Instagram content, since
+    ingest only processes MediaItems that already exist. Needs
+    SAAD_GPT_INSTAGRAM_COOKIES_FROM_BROWSER or SAAD_GPT_INSTAGRAM_COOKIES_FILE set
+    (or SAAD_GPT_APIFY_API_TOKEN as a fallback) — see ingestion/instagram.py."""
+    session = SessionLocal()
+    try:
+        created_counts = discover_and_seed_media(session, limit_per_source=limit)
+        for handle, count in created_counts.items():
+            typer.echo(f"{handle}: {count} new media item(s)")
+        if not created_counts:
+            typer.echo("no Instagram sources found — run `saad-gpt seed` first")
+        elif not any(created_counts.values()):
+            typer.echo("found 0 new items — check cookie/Apify auth is configured and working")
     finally:
         session.close()
 

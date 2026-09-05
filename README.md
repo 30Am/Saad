@@ -28,6 +28,7 @@ uv run saad-gpt serve         # http://127.0.0.1:8000
 ```bash
 uv run saad-gpt init-db       # dev-only shortcut; prefer alembic upgrade head
 uv run saad-gpt seed          # idempotent — safe to re-run
+uv run saad-gpt discover-instagram  # lists Instagram posts/reels, creates pending MediaItems
 uv run saad-gpt ingest        # runs pending MediaItems through download -> transcribe -> validate
 uv run saad-gpt tag           # Claude-assisted first-pass tagging over untagged Segments (Phase 3, R5)
 uv run saad-gpt serve         # FastAPI app
@@ -39,6 +40,10 @@ uv run saad-gpt chat          # interactive chat against the Manager (Section 8,
 - `GET/POST /sources` — the source registry (Section 2). POST to add a new
   account/channel — the spec calls this a "live registry," not a one-time import.
 - `GET/POST /media-items` — individual reels/videos/posts under a source.
+- `POST /ingestion/discover-instagram?limit=50` — same as `saad-gpt discover-instagram`.
+  Lists posts/reels for every Instagram Source and creates a pending MediaItem for
+  each new one — run this before ingesting Instagram content, since `/ingestion/run`
+  only processes MediaItems that already exist.
 - `POST /ingestion/run?limit=20` — same as `saad-gpt ingest`, over HTTP.
 - `GET /manager/query?category=&topic=&source_type=&include_unreviewed=&include_synthesis=`
   — the Manager (Section 6). Always returns the evidence view (grouped, verbatim,

@@ -19,8 +19,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yt_dlp
+from sqlalchemy.orm import Session
 
 from saad_sales_gpt.config import settings
+from saad_sales_gpt.models import MediaItem, Platform, Source
 
 APIFY_INSTAGRAM_SCRAPER_ACTOR = "apify/instagram-scraper"
 
@@ -53,6 +55,25 @@ def list_instagram_media(profile_url: str, limit: int = 50) -> list[str]:
     if settings.apify_api_token:
         return _list_via_apify(profile_url, limit)
     return []
+
+
+def discover_and_seed_media(session: Session, limit_per_source: int = 50) -> dict[str, int]:
+    """Runs list_instagram_media for every Instagram Source (the account-level rows
+    from Appendix A) and creates a pending MediaItem for any URL that doesn't have
+    one yet. This is the step that turns account discovery into rows the ingestion
+    pipeline (pipeline.run_pending) can actually process — list_instagram_media alone
+    only returns URLs, it doesn't persist anything. Returns {handle: count_created}."""
+    created_counts: dict[str, int] = {}
+    sources = session.query(Source).filter(Source.platform == Platform.instagram).all()
+    for source in sources:
+        urls = list_instagram_media(source.url, limit_per_source)
+        existing = {m.url for m in session.query(MediaItem.url).filter(MediaItem.source_id == source.source_id).all()}
+        new_urls = [u for u in urls if u not in existing]
+        for url in new_urls:
+            session.add(MediaItem(source_id=source.source_id, url=url))
+        session.commit()
+        created_counts[source.handle_or_channel] = len(new_urls)
+    return created_counts
 
 
 def _list_via_ytdlp(profile_url: str, limit: int) -> list[str]:
