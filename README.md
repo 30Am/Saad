@@ -7,9 +7,25 @@ first-pass tagging with a human-review gate (Phase 3, R5), and the Manager's
 evidence-view compilation plus chat interface (Section 6, Section 8 Q5),
 exposed over a small FastAPI service.
 
-**Not yet built:** real diarization, a review UI (the review workflow itself
-is built — see the API section — just no frontend for it), and background job
-processing for ingestion at scale. See "What's next" below.
+Diarization (`pyannote.audio`, context-based speaker identification — see
+`ingestion/diarization.py`), segment merging into quote-sized spans
+(`ingestion/merging.py`), and outcome tagging (did a call actually book a
+meeting/close?) are now built. **Not yet built:** a review UI (the review
+workflow itself is built — see the API section — just no frontend for it), and
+background job processing for ingestion at scale. See "What's next" below.
+
+Two ways to query the Manager without touching the API directly:
+- **Claude Code skill** — `.claude/skills/saad-sales-gpt/SKILL.md` in this repo.
+  Copy it to `~/.claude/skills/saad-sales-gpt/` to make it available in every
+  Claude Code session; set `SAAD_GPT_PROJECT_DIR` to wherever you cloned this
+  repo (see the skill file itself).
+- **MCP server for Claude Desktop** — `src/saad_sales_gpt/mcp_server.py`, run
+  via `saad-gpt mcp-serve`. Register it in `claude_desktop_config.json` (see
+  "Sharing this project" below for the exact snippet).
+
+Both work **without** `SAAD_GPT_ANTHROPIC_API_KEY` — the querying client's own
+model maps your question to filters and writes the final answer; `compile_answer()`
+itself is pure SQL/Python either way.
 
 ## Setup
 
@@ -92,10 +108,17 @@ uv run saad-gpt chat          # interactive chat against the Manager (Section 8,
 
 Other build decisions still worth knowing about:
 
-- **Diarization:** not implemented (see `ingestion/diarization.py` docstring).
-  `recording` and `podcast_insight` items will currently fail R1/R3 and land in
-  `needs_review` until real diarization (e.g. pyannote.audio) is wired in —
-  that's the spec-compliant behavior ("routed to review, not discarded"), not a bug.
+- **Diarization:** real (`pyannote.audio`), but "plain" — it detects distinct
+  speakers per recording, not WHICH one is Saad (no voice-ID/enrollment). For
+  `recording`/`podcast_insight` items already ingested, speaker identity
+  (`saad`/`prospect`/`host`) was instead reconstructed by reading each call's
+  actual content (who opens with the pitch, who's welcomed as the guest) —
+  see the per-source notes in `.claude/skills/saad-sales-gpt/SKILL.md` for
+  exactly how confident that is per source. Diarization needs
+  `SAAD_GPT_HF_TOKEN` (a HuggingFace token with the
+  `pyannote/speaker-diarization-3.1`, `pyannote/segmentation-3.0`, and
+  `pyannote/speaker-diarization-community-1` model licenses accepted) — see
+  `ingestion/diarization.py`. Free to run (local compute), not a per-call API.
 - **Instagram media discovery:** yt-dlp can fetch a single public post/reel by
   direct URL with no login, but *listing* everything on a profile needs an
   authenticated session. Set `SAAD_GPT_INSTAGRAM_COOKIES_FROM_BROWSER` (e.g.
@@ -109,18 +132,55 @@ Other build decisions still worth knowing about:
 
 ## What's next (Phase 4+)
 
-1. Real diarization for `recording` / `podcast_insight` sources — without it,
-   those source types keep failing R1/R3 and landing in `needs_review`, so there's
-   little for `saad-gpt tag` to actually classify yet from those two sources.
-2. A human review UI for `reviewed=false` tags and `needs_review` media items
+1. A human review UI for `reviewed=false` tags and `needs_review` media items
    (both already modeled and API-reachable — `ValidationIssue`,
-   `POST /tags/{tag_id}/review` — just no frontend).
-3. Background job processing for ingestion + tagging once volume grows toward
+   `POST /tags/{tag_id}/review` — just no frontend). At current volume
+   (~3,000+ Tag rows), a full tag-by-tag review isn't realistic — a sampling
+   tool (random batch per dimension, human judges accuracy) is the practical
+   version of this, not built yet.
+2. Voice-ID/speaker enrollment, if plain diarization's context-based speaker
+   identification (see above) ever proves unreliable at larger scale.
+3. Full manual (not keyword-based) tagging for `@saadsells`'s
+   `objection_handling`/`pricing`/`rapport` segment types and the second-pass
+   topic tags — currently mechanical pattern-matching, lower confidence than
+   the deal_industry/speaker-identity/outcome work.
+4. Background job processing for ingestion + tagging once volume grows toward
    the Q6 estimate (hundreds of items) — both are currently synchronous
    CLI/API-triggered runs and will become a bottleneck well before then.
-4. Actually run ingestion + tagging against the real sources in Appendix A —
-   everything so far has only been exercised against seeded/empty and
-   mocked-Claude test data.
+
+## Sharing this project with someone else
+
+The PII policy (Q4 above) means this only goes to people on the core team —
+raw cold-call transcripts include real prospect names/numbers. For someone
+who is:
+
+1. **Get them the code**: they `git clone` this repo (or you send a copy).
+2. **Get them the tagged data**: `pg_dump -F c` your local `saad_gpt` database
+   and hand them the file directly (not via git — it's data, not code, and
+   contains the PII from (1)). They restore it with:
+   ```bash
+   createdb saad_gpt   # or whatever they name it, matching their DATABASE_URL
+   pg_restore -d saad_gpt --no-owner /path/to/the.dump
+   ```
+3. **Minimal `.env`**: just `SAAD_GPT_DATABASE_URL` pointing at their restored
+   database — none of the ingestion-side keys (Anthropic/Apify/Instagram/HF)
+   are needed just to *query* already-tagged content.
+4. **Claude Code skill**: copy `.claude/skills/saad-sales-gpt/SKILL.md` (from
+   their clone) to `~/.claude/skills/saad-sales-gpt/SKILL.md`, and set
+   `SAAD_GPT_PROJECT_DIR` (e.g. in their shell profile) to wherever they
+   cloned this repo. It'll then be available in every Claude Code session on
+   their machine.
+5. **MCP server for Claude Desktop**: add this to their
+   `~/Library/Application Support/Claude/claude_desktop_config.json`
+   (macOS path — adjust for their OS), replacing the path with wherever they
+   cloned this repo, then fully quit and reopen Claude Desktop:
+   ```json
+   "saad-sales-gpt": {
+     "command": "/path/to/their/uv",
+     "args": ["run", "--directory", "/path/to/their/Saad/clone", "saad-gpt", "mcp-serve"]
+   }
+   ```
+   (`which uv` finds the right value for `command` on their machine.)
 
 ## Tests
 

@@ -32,12 +32,14 @@ class EvidenceItem:
     media_url: str
     category: str | None
     topic: str | None
+    outcome: str | None
 
 
 @dataclass
 class CompiledAnswer:
     category_filter: str
     topic_filter: str | None
+    outcome_filter: str | None = None
     # grouped[category][source_type] -> list[EvidenceItem], per Section 6.1 step 3.
     grouped: dict[str, dict[str, list[EvidenceItem]]] = field(default_factory=dict)
     empty_categories: list[str] = field(default_factory=list)
@@ -64,12 +66,18 @@ def compile_answer(
     category: str = ALL,
     topic: str | None = None,
     source_type: SourceType | None = None,
+    outcome: str | None = None,
     include_unreviewed: bool = False,
 ) -> CompiledAnswer:
     """Section 6.1, steps 1-4 (evidence view). Synthesis (step 4b) is a separate call —
     see generate_synthesis() — so the two outputs stay "kept visibly separate" per spec.
+
+    `outcome` filters to segments from calls tagged with a given real-world result
+    (e.g. "meeting_booked") — see the `outcome` TaxonomyEntry dimension. It's what
+    turns "an example of Saad opening a call" into "an example from a call that
+    actually got a meeting booked," which is the whole point for @saadsells recordings.
     """
-    result = CompiledAnswer(category_filter=category, topic_filter=topic)
+    result = CompiledAnswer(category_filter=category, topic_filter=topic, outcome_filter=outcome)
 
     candidate_ids: set[str] | None = None
     if category != ALL:
@@ -77,15 +85,19 @@ def compile_answer(
     if topic:
         topic_ids = _segment_ids_for_tag(session, "topic", topic, include_unreviewed)
         candidate_ids = topic_ids if candidate_ids is None else candidate_ids & topic_ids
+    if outcome:
+        outcome_ids = _segment_ids_for_tag(session, "outcome", outcome, include_unreviewed)
+        candidate_ids = outcome_ids if candidate_ids is None else candidate_ids & outcome_ids
 
     query = session.query(Segment).options(
         joinedload(Segment.tags),
         joinedload(Segment.transcript).joinedload(Transcript.media_item).joinedload(MediaItem.source),
     )
+    filter_label = category if category != ALL else (topic or outcome or "requested filter")
     if candidate_ids is not None:
         if not candidate_ids:
             # Section 6.1 step 5: say so explicitly, never silently fall back.
-            result.empty_categories.append(category if category != ALL else (topic or "requested filter"))
+            result.empty_categories.append(filter_label)
             return result
         query = query.filter(Segment.segment_id.in_(candidate_ids))
 
@@ -99,6 +111,7 @@ def compile_answer(
 
         seg_category = _tag_value(segment, DEAL_INDUSTRY_DIMENSION) or "unspecified"
         seg_topic = _tag_value(segment, "topic")
+        seg_outcome = _tag_value(segment, "outcome")
 
         item = EvidenceItem(
             segment_id=segment.segment_id,
@@ -111,11 +124,12 @@ def compile_answer(
             media_url=media_item.url,
             category=seg_category,
             topic=seg_topic,
+            outcome=seg_outcome,
         )
         result.grouped.setdefault(seg_category, {}).setdefault(item.source_type, []).append(item)
 
     if not result.grouped:
-        result.empty_categories.append(category if category != ALL else (topic or "requested filter"))
+        result.empty_categories.append(filter_label)
 
     return result
 

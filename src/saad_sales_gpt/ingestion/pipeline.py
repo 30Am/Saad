@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from saad_sales_gpt.config import settings
 from saad_sales_gpt.ingestion import instagram, youtube
 from saad_sales_gpt.ingestion.diarization import assign_speakers
+from saad_sales_gpt.ingestion.merging import Span, merge_spans
 from saad_sales_gpt.ingestion.transcription import transcribe
 from saad_sales_gpt.models import (
     IngestionStatus,
@@ -123,14 +124,19 @@ def _transcribe(session: Session, media_item: MediaItem, source: Source) -> bool
         session.add(transcript)
         session.flush()
 
-        for raw_segment, speaker in assign_speakers(result.segments, source.source_type):
+        assigned = assign_speakers(result.segments, source.source_type, media_item.raw_media_path)
+        spans = [
+            Span(start_ms=raw_segment.start_ms, end_ms=raw_segment.end_ms, text=raw_segment.text, speaker=speaker)
+            for raw_segment, speaker in assigned
+        ]
+        for span in merge_spans(spans):
             session.add(
                 Segment(
                     transcript_id=transcript.transcript_id,
-                    speaker=speaker,
-                    start_ms=raw_segment.start_ms,
-                    end_ms=raw_segment.end_ms,
-                    text=raw_segment.text,
+                    speaker=span.speaker,
+                    start_ms=span.start_ms,
+                    end_ms=span.end_ms,
+                    text=span.text,
                 )
             )
     except Exception as exc:  # noqa: BLE001 — whisper/ffmpeg errors are wide; route to review, don't crash the batch

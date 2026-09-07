@@ -2,6 +2,7 @@ import typer
 import uvicorn
 
 from saad_sales_gpt.db import Base, SessionLocal, engine
+from saad_sales_gpt.ingestion.diarization import ensure_diarization_env
 from saad_sales_gpt.ingestion.instagram import discover_and_seed_media
 from saad_sales_gpt.ingestion.pipeline import cleanup_transcribed_media, run_pending
 from saad_sales_gpt.manager.chat import answer_question
@@ -55,6 +56,7 @@ def discover_instagram(limit: int = 50) -> None:
 @app.command()
 def ingest(limit: int = 20) -> None:
     """Run the ingestion pipeline over pending MediaItems (Phase 2)."""
+    ensure_diarization_env()
     session = SessionLocal()
     try:
         results = run_pending(session, limit=limit)
@@ -103,6 +105,16 @@ def tag(limit: int = 50) -> None:
 def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False) -> None:
     """Run the FastAPI app (Manager query API + admin endpoints)."""
     uvicorn.run("saad_sales_gpt.api.main:app", host=host, port=port, reload=reload)
+
+
+@app.command()
+def mcp_serve() -> None:
+    """Run the MCP server (stdio transport) so Claude Desktop or any other MCP client
+    can query the Manager directly — see mcp_server.py. Not meant to be run by hand
+    day-to-day; the MCP client launches this itself per its own config."""
+    from saad_sales_gpt.mcp_server import main as run_mcp_server
+
+    run_mcp_server()
 
 
 @app.command()

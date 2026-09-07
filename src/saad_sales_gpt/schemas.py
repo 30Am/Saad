@@ -54,11 +54,13 @@ class EvidenceItemOut(BaseModel):
     media_url: str
     category: str | None
     topic: str | None
+    outcome: str | None
 
 
 class ManagerQueryOut(BaseModel):
     category_filter: str
     topic_filter: str | None
+    outcome_filter: str | None = None
     grouped: dict[str, dict[str, list[EvidenceItemOut]]]
     empty_categories: list[str]
     synthesis: str | None = None

@@ -15,6 +15,7 @@ def query_manager(
     category: str = ALL,
     topic: str | None = None,
     source_type: SourceType | None = None,
+    outcome: str | None = None,
     include_unreviewed: bool = False,
     include_synthesis: bool = False,
     session: Session = Depends(get_session),
@@ -26,6 +27,7 @@ def query_manager(
         category=category,
         topic=topic,
         source_type=source_type,
+        outcome=outcome,
         include_unreviewed=include_unreviewed,
     )
     if include_synthesis:

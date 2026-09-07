@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     instagram_cookies_from_browser: str | None = None  # e.g. "chrome", "safari", "firefox"
     instagram_cookies_file: Path | None = None  # path to a Netscape-format cookies.txt
 
+    # HuggingFace access token for pyannote.audio's gated diarization model (see
+    # ingestion/diarization.py). Requires accepting the license at
+    # huggingface.co/pyannote/speaker-diarization-3.1 and .../segmentation-3.0.
+    # Diarization degrades cleanly to Speaker.unknown for every segment if unset.
+    hf_token: str | None = None
+
 
 settings = Settings()
 settings.media_root.mkdir(parents=True, exist_ok=True)

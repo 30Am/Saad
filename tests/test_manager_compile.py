@@ -128,3 +128,55 @@ def test_category_all_returns_everything_grouped(session: Session) -> None:
 
     assert answer.category_filter == ALL
     assert list(answer.grouped.keys()) == ["technology"]
+
+
+def test_outcome_filter_narrows_to_segments_from_calls_with_that_result(session: Session) -> None:
+    """outcome is what turns 'an example of Saad opening a call' into 'an example from
+    a call that actually got a meeting booked' — the point of tagging @saadsells with it."""
+    source = Source(
+        platform=Platform.instagram, handle_or_channel="saadsells", source_type=SourceType.recording, url="u"
+    )
+    session.add(source)
+    session.flush()
+    booked_item = MediaItem(source_id=source.source_id, url="m-booked")
+    rejected_item = MediaItem(source_id=source.source_id, url="m-rejected")
+    session.add_all([booked_item, rejected_item])
+    session.flush()
+    booked_t = Transcript(media_id=booked_item.media_id, full_text="a", transcription_method="whisper")
+    rejected_t = Transcript(media_id=rejected_item.media_id, full_text="b", transcription_method="whisper")
+    session.add_all([booked_t, rejected_t])
+    session.flush()
+    booked_seg = Segment(
+        transcript_id=booked_t.transcript_id, speaker=Speaker.saad, start_ms=0, end_ms=100, text="opening that worked"
+    )
+    rejected_seg = Segment(
+        transcript_id=rejected_t.transcript_id, speaker=Speaker.saad, start_ms=0, end_ms=100, text="opening that failed"
+    )
+    session.add_all([booked_seg, rejected_seg])
+    session.flush()
+    session.add_all(
+        [
+            Tag(
+                segment_id=booked_seg.segment_id,
+                tag_dimension="outcome",
+                tag_value="meeting_booked",
+                tagged_by=TaggedBy.human,
+                reviewed=True,
+            ),
+            Tag(
+                segment_id=rejected_seg.segment_id,
+                tag_dimension="outcome",
+                tag_value="rejected",
+                tagged_by=TaggedBy.human,
+                reviewed=True,
+            ),
+        ]
+    )
+    session.commit()
+
+    answer = compile_answer(session, outcome="meeting_booked")
+
+    all_texts = {item.text for by_source in answer.grouped.values() for items in by_source.values() for item in items}
+    assert all_texts == {"opening that worked"}
+    evidence = next(iter(next(iter(answer.grouped.values())).values()))[0]
+    assert evidence.outcome == "meeting_booked"

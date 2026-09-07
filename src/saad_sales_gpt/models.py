@@ -44,6 +44,7 @@ class IngestionStatus(enum.StrEnum):
     ready = "ready"
     failed = "failed"
     needs_review = "needs_review"  # routed here by R1-R3 validation, not discarded
+    duplicate = "duplicate"  # same underlying recording re-posted at a different URL, transcript/segments removed
 
 
 class Speaker(enum.StrEnum):
@@ -51,6 +52,12 @@ class Speaker(enum.StrEnum):
     prospect = "prospect"
     host = "host"
     unknown = "unknown"  # pending diarization / review
+    # Plain diarization (pyannote) distinguishes speakers per-recording but can't tell
+    # WHICH one is Saad without a voice-ID layer (not built) — these two carry no
+    # identity guarantee, they only exist so R1's "2+ distinct speakers" check has
+    # something to count that isn't `unknown`. See ingestion/diarization.py.
+    speaker_a = "speaker_a"
+    speaker_b = "speaker_b"
 
 
 class TaggedBy(enum.StrEnum):

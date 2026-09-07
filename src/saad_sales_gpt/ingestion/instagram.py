@@ -67,8 +67,8 @@ def discover_and_seed_media(session: Session, limit_per_source: int = 50) -> dic
     sources = session.query(Source).filter(Source.platform == Platform.instagram).all()
     for source in sources:
         urls = list_instagram_media(source.url, limit_per_source)
-        existing = {m.url for m in session.query(MediaItem.url).filter(MediaItem.source_id == source.source_id).all()}
-        new_urls = [u for u in urls if u not in existing]
+        existing = {m.url for m in session.query(MediaItem.url).all()}
+        new_urls = list(dict.fromkeys(u for u in urls if u not in existing))
         for url in new_urls:
             session.add(MediaItem(source_id=source.source_id, url=url))
         session.commit()
@@ -88,16 +88,21 @@ def _list_via_ytdlp(profile_url: str, limit: int) -> list[str]:
 
 
 def _list_via_apify(profile_url: str, limit: int) -> list[str]:
+    """Feed posts and Reels are distinct resultsType values for this actor — a profile's
+    Reels tab is NOT included in a "posts" call, so both must be fetched and merged."""
     from apify_client import ApifyClient
 
     client = ApifyClient(settings.apify_api_token)
-    run = client.actor(APIFY_INSTAGRAM_SCRAPER_ACTOR).call(
-        run_input={"directUrls": [profile_url], "resultsType": "posts", "resultsLimit": limit}
-    )
-    if run is None:
-        return []
-    items = client.dataset(run.default_dataset_id).list_items().items
-    return [item["url"] for item in items if item.get("url")]
+    urls: list[str] = []
+    for results_type in ("posts", "reels"):
+        run = client.actor(APIFY_INSTAGRAM_SCRAPER_ACTOR).call(
+            run_input={"directUrls": [profile_url], "resultsType": results_type, "resultsLimit": limit}
+        )
+        if run is None:
+            continue
+        items = client.dataset(run.default_dataset_id).list_items().items
+        urls.extend(item["url"] for item in items if item.get("url"))
+    return list(dict.fromkeys(urls))
 
 
 def fetch_instagram_media(url: str, media_id: str) -> FetchedMedia:
